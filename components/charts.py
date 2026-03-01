@@ -34,16 +34,30 @@ def portfolio_value_chart(
     dates: pd.DatetimeIndex,
     values: pd.Series,
     benchmark: pd.Series = None,
+    benchmarks: dict[str, pd.Series] = None,
     title: str = "Portfolio Value",
 ) -> go.Figure:
-    """Line chart with fill for portfolio value over time."""
+    """Line chart with fill for portfolio value over time.
+
+    Args:
+        benchmarks: dict of {name: series} for multiple comparison lines.
+        benchmark: single benchmark series (legacy, used if benchmarks is None).
+    """
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=dates, y=values, name="Portfolio",
+        x=dates, y=values, name="Your Portfolio",
         fill="tozeroy", fillcolor="rgba(255,0,42,0.1)",
         line=dict(color=PRIMARY_COLOR, width=2),
     ))
-    if benchmark is not None and not benchmark.empty:
+    if benchmarks:
+        bench_colors = ["#2979FF", "#FF9100", "#AA00FF", "#00BFA5"]
+        for i, (name, series) in enumerate(benchmarks.items()):
+            if series is not None and not series.empty:
+                fig.add_trace(go.Scatter(
+                    x=dates, y=series, name=name,
+                    line=dict(color=bench_colors[i % len(bench_colors)], width=1, dash="dash"),
+                ))
+    elif benchmark is not None and not benchmark.empty:
         fig.add_trace(go.Scatter(
             x=dates, y=benchmark, name="Benchmark",
             line=dict(color=NEUTRAL_COLOR, width=1, dash="dash"),
@@ -319,6 +333,38 @@ def rolling_metric_chart(
     ))
     fig.update_layout(yaxis_title=ylabel)
     return _apply_layout(fig, title)
+
+
+def theme_momentum_bar(
+    theme_perf: dict[str, float],
+    theme_etfs: dict[str, str],
+    title: str = "Theme Momentum (1M Return)",
+) -> go.Figure:
+    """Horizontal bar chart for theme ETF performance.
+
+    Args:
+        theme_perf: {ticker: return_pct} e.g. {"EWY": -3.2}
+        theme_etfs: {theme_name: ticker} e.g. {"Korea": "EWY"}
+    """
+    # Build label → return mapping using theme names
+    etf_to_theme = {v: k for k, v in theme_etfs.items()}
+    items = []
+    for ticker, ret in theme_perf.items():
+        label = etf_to_theme.get(ticker, ticker)
+        items.append((label, ret))
+    items.sort(key=lambda x: x[1])
+
+    names = [i[0] for i in items]
+    vals = [i[1] for i in items]
+    colors = [POSITIVE_COLOR if v >= 0 else NEGATIVE_COLOR for v in vals]
+
+    fig = go.Figure(go.Bar(
+        x=vals, y=names, orientation="h",
+        marker_color=colors,
+        hovertemplate="%{y}: %{x:.2f}%<extra></extra>",
+    ))
+    fig.update_layout(xaxis_title="Return (%)")
+    return _apply_layout(fig, title, height=max(250, len(names) * 35 + 80))
 
 
 def treemap_chart(

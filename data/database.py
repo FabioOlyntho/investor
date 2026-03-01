@@ -96,12 +96,33 @@ def init_db(db_path: Optional[Path] = None):
                 FOREIGN KEY (config_id) REFERENCES alert_config(id) ON DELETE SET NULL
             );
 
+            CREATE TABLE IF NOT EXISTS regime_history (
+                date TEXT NOT NULL UNIQUE,
+                score REAL NOT NULL,
+                vix REAL,
+                yield_spread REAL,
+                momentum_pct REAL
+            );
+
+            CREATE TABLE IF NOT EXISTS morningstar_cache (
+                isin TEXT PRIMARY KEY,
+                fund_name TEXT,
+                star_rating INTEGER,
+                previous_star_rating INTEGER,
+                medalist_rating TEXT,
+                category TEXT,
+                risk_rating TEXT,
+                last_updated TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
             CREATE INDEX IF NOT EXISTS idx_price_history_ticker_date
                 ON price_history(ticker, date);
             CREATE INDEX IF NOT EXISTS idx_portfolio_values_date
                 ON portfolio_values(date);
             CREATE INDEX IF NOT EXISTS idx_alert_history_triggered
                 ON alert_history(triggered_at);
+            CREATE INDEX IF NOT EXISTS idx_regime_history_date
+                ON regime_history(date);
         """)
 
 
@@ -359,3 +380,130 @@ def alert_fired_today(
             params.append(ticker)
         row = conn.execute(query, params).fetchone()
         return row["cnt"] > 0
+
+
+# --- Regime History ---
+
+def save_regime_score(
+    dt: str, score: float, vix: float = None,
+    yield_spread: float = None, momentum_pct: float = None,
+    db_path: Optional[Path] = None
+):
+    with get_connection(db_path) as conn:
+        conn.execute(
+            """INSERT OR REPLACE INTO regime_history
+               (date, score, vix, yield_spread, momentum_pct)
+               VALUES (?, ?, ?, ?, ?)""",
+            (dt, score, vix, yield_spread, momentum_pct)
+        )
+
+
+def get_regime_history(
+    limit: int = 10, db_path: Optional[Path] = None
+) -> pd.DataFrame:
+    with get_connection(db_path) as conn:
+        return pd.read_sql_query(
+            "SELECT * FROM regime_history ORDER BY date DESC LIMIT ?",
+            conn, params=[limit]
+        )
+
+
+# --- Morningstar Cache ---
+
+def save_morningstar_rating(
+    isin: str, fund_name: str = None, star_rating: int = None,
+    previous_star_rating: int = None, medalist_rating: str = None,
+    category: str = None, risk_rating: str = None,
+    db_path: Optional[Path] = None
+):
+    with get_connection(db_path) as conn:
+        conn.execute(
+            """INSERT OR REPLACE INTO morningstar_cache
+               (isin, fund_name, star_rating, previous_star_rating,
+                medalist_rating, category, risk_rating, last_updated)
+               VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))""",
+            (isin, fund_name, star_rating, previous_star_rating,
+             medalist_rating, category, risk_rating)
+        )
+
+
+def get_morningstar_cache(db_path: Optional[Path] = None) -> pd.DataFrame:
+    with get_connection(db_path) as conn:
+        return pd.read_sql_query(
+            "SELECT * FROM morningstar_cache ORDER BY isin", conn
+        )
+
+
+def get_morningstar_rating(
+    isin: str, db_path: Optional[Path] = None
+) -> Optional[dict]:
+    with get_connection(db_path) as conn:
+        row = conn.execute(
+            "SELECT * FROM morningstar_cache WHERE isin = ?", (isin,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+# --- Seed Default Alerts ---
+
+def seed_default_alerts(db_path: Optional[Path] = None):
+    """Seed 34 pre-configured alert rules if none exist."""
+    configs = get_alert_configs(db_path)
+    if not configs.empty:
+        return  # Already has rules
+
+    rules = [
+        # Portfolio P&L
+        ("total_loss", None, -5.0, "below", "warning"),
+        ("total_loss", None, -10.0, "below", "critical"),
+        ("total_loss", None, -15.0, "below", "critical"),
+        # VIX
+        ("vix_spike", None, 25.0, "above", "warning"),
+        ("vix_spike", None, 30.0, "above", "warning"),
+        ("vix_spike", None, 35.0, "above", "critical"),
+        # Correlation
+        ("correlation_spike", None, 0.75, "above", "warning"),
+        # Regime
+        ("market_regime_change", None, 15.0, "below", "warning"),
+        ("market_regime_change", None, 25.0, "below", "critical"),
+        # Price drops — volatile (uranium, rare earth, gold)
+        ("price_drop", "NUCL.L", 5.0, "below", "warning"),
+        ("price_drop", "U3O8.DE", 5.0, "below", "warning"),
+        ("price_drop", "REMX.L", 5.0, "below", "warning"),
+        ("price_drop", "GGMUSY.SW", 5.0, "below", "warning"),
+        # Price drops — semi/korea/mining
+        ("price_drop", "SMH.DE", 4.0, "below", "warning"),
+        ("price_drop", "IKRA.AS", 4.0, "below", "warning"),
+        ("price_drop", "HKOR.L", 4.0, "below", "warning"),
+        ("price_drop", "0P0001843K.F", 4.0, "below", "warning"),
+        # Drawdowns — volatile
+        ("drawdown", "NUCL.L", 20.0, "below", "warning"),
+        ("drawdown", "U3O8.DE", 20.0, "below", "warning"),
+        ("drawdown", "REMX.L", 20.0, "below", "warning"),
+        # Drawdowns — semi/korea
+        ("drawdown", "SMH.DE", 15.0, "below", "warning"),
+        ("drawdown", "IKRA.AS", 15.0, "below", "warning"),
+        # Theme rotation
+        ("sector_rotation", "EWY", 10.0, "below", "warning"),
+        ("sector_rotation", "URA", 15.0, "below", "warning"),
+        ("sector_rotation", "REMX", 15.0, "below", "warning"),
+        ("sector_rotation", "SMH", 10.0, "below", "warning"),
+        ("sector_rotation", "GDX", 10.0, "below", "warning"),
+        # Concentration
+        ("concentration_risk", "Korea", 25.0, "above", "warning"),
+        ("concentration_risk", "Commodities/Mining", 30.0, "above", "warning"),
+        ("concentration_risk", "Global Equity", 30.0, "above", "warning"),
+        # Currency
+        ("currency_risk", "EUR/USD", 2.0, "above", "warning"),
+        ("currency_risk", "EUR/GBP", 2.0, "above", "warning"),
+        # Morningstar
+        ("morningstar_downgrade", None, 1.0, "below", "warning"),
+        ("morningstar_downgrade", None, 2.0, "below", "critical"),
+    ]
+
+    for alert_type, ticker, threshold, direction, severity in rules:
+        add_alert_config(
+            alert_type=alert_type, threshold=threshold,
+            direction=direction, severity=severity,
+            ticker=ticker, db_path=db_path,
+        )

@@ -10,8 +10,10 @@ import pytest
 from data.database import (
     add_alert_config, add_alert_history, add_position, acknowledge_alert,
     alert_fired_today, delete_alert_config, delete_position,
-    get_alert_configs, get_alert_history, get_positions,
-    get_price_history, init_db, save_price_history,
+    get_alert_configs, get_alert_history, get_morningstar_cache,
+    get_morningstar_rating, get_positions, get_price_history,
+    get_regime_history, init_db, save_morningstar_rating,
+    save_price_history, save_regime_score, seed_default_alerts,
     update_position,
 )
 
@@ -124,3 +126,72 @@ def test_alert_history(db_path):
     # Unacknowledged only
     unack = get_alert_history(unacknowledged_only=True, db_path=db_path)
     assert len(unack) == 0
+
+
+# --- Regime History ---
+
+def test_regime_history(db_path):
+    save_regime_score("2024-01-01", 65.0, vix=18.0, yield_spread=0.5, momentum_pct=0.7, db_path=db_path)
+    save_regime_score("2024-01-02", 70.0, vix=15.0, db_path=db_path)
+
+    history = get_regime_history(limit=10, db_path=db_path)
+    assert len(history) == 2
+    assert history.iloc[0]["score"] == 70.0  # Most recent first
+    assert history.iloc[1]["score"] == 65.0
+
+
+def test_regime_upsert(db_path):
+    save_regime_score("2024-01-01", 50.0, db_path=db_path)
+    save_regime_score("2024-01-01", 60.0, db_path=db_path)  # Same date
+    history = get_regime_history(limit=10, db_path=db_path)
+    assert len(history) == 1
+    assert history.iloc[0]["score"] == 60.0
+
+
+# --- Morningstar Cache ---
+
+def test_morningstar_cache(db_path):
+    save_morningstar_rating(
+        "ES0113693032", fund_name="Alken Small Cap",
+        star_rating=5, previous_star_rating=5,
+        medalist_rating="Silver", category="Europe Small-Cap",
+        risk_rating="Above Average", db_path=db_path,
+    )
+    cache = get_morningstar_cache(db_path)
+    assert len(cache) == 1
+    assert cache.iloc[0]["star_rating"] == 5
+
+    rating = get_morningstar_rating("ES0113693032", db_path)
+    assert rating is not None
+    assert rating["fund_name"] == "Alken Small Cap"
+
+    # Non-existent
+    assert get_morningstar_rating("FAKE123", db_path) is None
+
+
+# --- Seed Default Alerts ---
+
+def test_seed_default_alerts(db_path):
+    # Initially empty
+    assert len(get_alert_configs(db_path)) == 0
+
+    seed_default_alerts(db_path)
+    configs = get_alert_configs(db_path)
+    assert len(configs) == 34
+
+    # Idempotent — calling again should not add more
+    seed_default_alerts(db_path)
+    assert len(get_alert_configs(db_path)) == 34
+
+
+def test_seed_has_all_alert_types(db_path):
+    seed_default_alerts(db_path)
+    configs = get_alert_configs(db_path)
+    types = set(configs["alert_type"].tolist())
+    expected = {
+        "total_loss", "vix_spike", "correlation_spike",
+        "market_regime_change", "price_drop", "drawdown",
+        "sector_rotation", "concentration_risk", "currency_risk",
+        "morningstar_downgrade",
+    }
+    assert expected == types

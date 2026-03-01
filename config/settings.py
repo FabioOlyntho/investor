@@ -40,6 +40,13 @@ SECTOR_COLORS = {
 DEFAULT_BENCHMARK = "IWDA.AS"  # iShares MSCI World
 RISK_FREE_TICKER = "^IRX"  # 13-week Treasury
 VIX_TICKER = "^VIX"
+
+# Major benchmark indices to track
+BENCHMARK_INDICES = {
+    "S&P 500": "^GSPC",
+    "Nasdaq": "^IXIC",
+    "IBEX 35": "^IBEX",
+}
 YIELD_TICKERS = {
     "3M": "^IRX",
     "2Y": "2YY=F",
@@ -67,15 +74,62 @@ POSITION_CACHE_TTL = 60     # 1 minute
 SECTOR_CACHE_TTL = 3600     # 1 hour
 YIELD_CACHE_TTL = 3600      # 1 hour
 
-# Alert defaults
+# Theme ETFs (for sector rotation and context monitoring)
+THEME_ETFS = {
+    "Korea": "EWY",
+    "Rare Earth": "REMX",
+    "Uranium": "URA",
+    "Semiconductors": "SMH",
+    "Gold Miners": "GDX",
+    "Copper": "COPX",
+    "Emerging Markets": "EEM",
+    "KOSPI": "^KS11",
+}
+
+# Portfolio theme groupings (ticker → theme)
+THEME_TICKER_GROUPS = {
+    "Korea": ["IKRA.AS", "HKOR.L", "0P0000ZXLI.F"],
+    "Commodities/Mining": ["0P0001843K.F", "0P00000B0T", "REMX.L", "GGMUSY.SW"],
+    "Nuclear/Uranium": ["NUCL.L", "U3O8.DE"],
+    "Semiconductors": ["SMH.DE"],
+    "Global Equity": ["ES0113693032", "LU0496367763"],
+    "Europe": ["ES0138792033", "0P0000Z2NB.F"],
+    "Emerging Asia": ["0P0001CDI0.F"],
+}
+
+# Ticker → real ISIN for mstarpy fund lookups
+FUND_ISIN_MAP = {
+    "ES0113693032": "ES0113693032",
+    "LU0496367763": "LU0496367763",
+    "0P0001843K.F": "LU1223083087",
+    "0P00000B0T": "LU0172157280",
+    "0P0001CDI0.F": "LU0329678410",
+    "0P0000ZXLI.F": "LU0301637293",
+    "0P0000Z2NB.F": "LU0524465548",
+    "ES0138792033": "ES0138792033",
+}
+
+# FX pairs for currency risk monitoring
+FX_PAIRS = {"EUR/USD": "EURUSD=X", "EUR/GBP": "EURGBP=X", "EUR/CHF": "EURCHF=X"}
+
+# Morningstar cache
+MORNINGSTAR_CACHE_TTL = 86400  # 24h in seconds
+
+# Alert defaults — descriptions in plain language
 ALERT_TYPES = {
-    "price_drop": "Single-day price drop exceeds threshold",
-    "drawdown": "Drawdown from peak exceeds threshold",
-    "volatility_spike": "30-day annualized volatility exceeds threshold",
-    "rebalance_drift": "Position weight drifts from target by threshold",
-    "vix_spike": "VIX exceeds threshold level",
-    "correlation_break": "Portfolio correlation exceeds threshold",
-    "total_loss": "Total portfolio P&L drops below threshold",
+    "price_drop": "A fund or ETF lost too much in a single day",
+    "drawdown": "A fund or ETF has fallen too far from its best price",
+    "volatility_spike": "A fund is swinging up and down more than usual (high instability)",
+    "rebalance_drift": "One position grew or shrank too much compared to your plan",
+    "vix_spike": "The Fear Index (VIX) is high — markets are nervous",
+    "correlation_break": "Everything in your portfolio is moving in the same direction (bad for diversification)",
+    "total_loss": "Your whole portfolio is losing more than you set as a limit",
+    "market_regime_change": "Market mood shifted quickly (from calm to nervous, or the opposite)",
+    "sector_rotation": "A sector related to your investments is falling over the past month",
+    "correlation_spike": "All your investments are moving together — less protection if things go wrong",
+    "concentration_risk": "Too much of your money is in one theme (e.g. Korea, mining)",
+    "currency_risk": "The euro moved a lot against another currency today — affects your returns",
+    "morningstar_downgrade": "A fund's Morningstar star rating went down (less recommended by analysts)",
 }
 
 SEVERITY_COLORS = {

@@ -31,7 +31,7 @@ def test_price_drop_triggers(sample_prices):
     msg = evaluate_price_drop("IWDA.AS", 3.0, "below", sample_prices)
     assert msg is not None
     assert "IWDA.AS" in msg
-    assert "dropped" in msg
+    assert "lost" in msg
 
 
 def test_price_drop_no_trigger(sample_prices):
@@ -42,7 +42,7 @@ def test_price_drop_no_trigger(sample_prices):
 def test_price_drop_above(sample_prices):
     msg = evaluate_price_drop("EIMI.AS", 1.0, "above", sample_prices)
     assert msg is not None
-    assert "gained" in msg
+    assert "jumped up" in msg
 
 
 def test_price_drop_missing_ticker(sample_prices):
@@ -53,7 +53,7 @@ def test_price_drop_missing_ticker(sample_prices):
 def test_drawdown_triggers(sample_hist):
     msg = evaluate_drawdown("IWDA.AS", 10.0, "below", sample_hist)
     assert msg is not None
-    assert "drawdown" in msg
+    assert "from its highest" in msg
 
 
 def test_drawdown_no_trigger(sample_hist):
@@ -64,7 +64,7 @@ def test_drawdown_no_trigger(sample_hist):
 def test_volatility_spike(sample_hist):
     msg = evaluate_volatility_spike("IWDA.AS", 1.0, "above", sample_hist)
     # May or may not trigger depending on calculated vol
-    assert msg is None or "volatility" in msg
+    assert msg is None or "unstable" in msg
 
 
 def test_vix_spike():
@@ -103,7 +103,7 @@ def test_total_loss(sample_prices):
     # Total value: 8000+1500=9500, cost: 12000, PnL: -20.8%
     msg = evaluate_total_loss(-10.0, "below", positions, sample_prices)
     assert msg is not None
-    assert "P&L" in msg
+    assert "losing" in msg
 
     msg = evaluate_total_loss(-30.0, "below", positions, sample_prices)
     assert msg is None  # -20.8% > -30%

@@ -27,29 +27,30 @@ def render():
         return
 
     tickers = tuple(positions["ticker"].tolist())
+    unique_tickers = tuple(dict.fromkeys(tickers))
     period = st.sidebar.selectbox("Period", ["6mo", "1y", "2y", "5y"], index=1, key="risk_period")
 
-    hist = fetch_multi_history(tickers, period=period)
+    hist = fetch_multi_history(unique_tickers, period=period)
     if hist.empty or len(hist) < 20:
         st.warning("Not enough data for risk analysis.")
         return
 
-    available = [t for t in tickers if t in hist.columns]
+    available = [t for t in unique_tickers if t in hist.columns]
     if not available:
         st.warning("No matching price data.")
         return
 
-    # Weighted portfolio
+    # Weighted portfolio (aggregate duplicates)
     weights = {}
     for _, pos in positions.iterrows():
         if pos["ticker"] in available:
-            weights[pos["ticker"]] = pos["cost_basis"]
+            weights[pos["ticker"]] = weights.get(pos["ticker"], 0) + pos["cost_basis"]
     total_w = sum(weights.values())
     if total_w == 0:
         return
 
     w = pd.Series({t: weights.get(t, 0) / total_w for t in available})
-    returns_df = hist[available].pct_change().dropna()
+    returns_df = hist[available].ffill().pct_change().fillna(0)
     port_returns = (returns_df * w).sum(axis=1)
     port_prices = (1 + port_returns).cumprod()
 
@@ -81,7 +82,7 @@ def render():
 
     with col1:
         # Risk/Return scatter
-        prices_data = fetch_current_prices(tickers)
+        prices_data = fetch_current_prices(unique_tickers)
         rets_ann = []
         vols_ann = []
         mvs = []

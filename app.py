@@ -12,22 +12,17 @@ st.set_page_config(
     page_title="InvestmentMonitor",
     page_icon="📊",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
-# Navigation
+# Navigation — single dashboard + settings pages
 pages = {
-    "Portfolio": [
-        st.Page("pages/1_portfolio_overview.py", title="Overview", icon="📊", default=True),
-        st.Page("pages/2_performance_analysis.py", title="Performance", icon="📈"),
-        st.Page("pages/3_risk_analysis.py", title="Risk", icon="🛡️"),
-    ],
-    "Market": [
-        st.Page("pages/4_market_signals.py", title="Signals", icon="📡"),
+    "Dashboard": [
+        st.Page("pages/1_dashboard.py", title="Dashboard", icon="📊", default=True),
     ],
     "Settings": [
-        st.Page("pages/5_alerts.py", title="Alerts", icon="🔔"),
-        st.Page("pages/6_portfolio_management.py", title="Portfolio Mgmt", icon="⚙️"),
+        st.Page("pages/5_alerts.py", title="Alert Rules", icon="🔔"),
+        st.Page("pages/6_portfolio_management.py", title="Portfolio Management", icon="⚙️"),
     ],
 }
 
@@ -37,7 +32,7 @@ nav = st.navigation(pages)
 with st.sidebar:
     st.markdown(
         "<h2 style='color:#FF002A;margin-bottom:0'>InvestmentMonitor</h2>"
-        "<p style='color:#78909C;font-size:12px;margin-top:0'>Portfolio Dashboard & Alerts</p>",
+        "<p style='color:#78909C;font-size:12px;margin-top:0'>Your Investment Dashboard</p>",
         unsafe_allow_html=True,
     )
 

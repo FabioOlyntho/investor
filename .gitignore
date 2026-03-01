@@ -13,3 +13,4 @@ portfolio.db
 .pytest_cache/
 .coverage
 htmlcov/
+portfolio_import.csv
