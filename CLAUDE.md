@@ -161,4 +161,12 @@ Subject: `InvestmentMonitor: 3 warning(s) | Mood: Pessimistic (28) | 2026-03-01`
   - Plain language throughout (no financial jargon)
   - Benchmark indices: S&P 500, Nasdaq, IBEX 35
   - 56 tests passing
-- Phase 3: VPS deployment (planned)
+- Phase 3: VPS Deployment (COMPLETE)
+  - VPS: 82.25.117.157 (Hostinger, Ubuntu 24.04)
+  - URL: https://investment.humanaie.com (Streamlit:8501 → Traefik)
+  - App dir: /var/www/investment-monitor
+  - Venv: /var/www/investment-monitor/venv/ (Python 3.12)
+  - PM2: fork mode, name "investment-monitor"
+  - Traefik: /etc/traefik/dynamic/investment-monitor.yml
+  - Let's Encrypt SSL (auto-renewal via Traefik)
+  - GitHub: https://github.com/FabioOlyntho/investor
