@@ -5,7 +5,7 @@ import pandas as pd
 import streamlit as st
 
 from components.charts import (
-    allocation_donut, correlation_heatmap, cumulative_returns_chart,
+    allocation_donut, correlation_heatmap,
     drawdown_chart, monthly_heatmap, pnl_bar_chart,
     portfolio_value_chart, regime_gauge, return_distribution_histogram,
     sector_exposure_bar, sector_momentum_bar, theme_momentum_bar,
@@ -16,16 +16,16 @@ from config.settings import (
     BENCHMARK_INDICES, FX_PAIRS, SEVERITY_COLORS, THEME_ETFS,
 )
 from data.calculations import (
-    annualized_return, annualized_volatility, beta,
+    annualized_return, annualized_volatility,
     correlation_matrix, daily_returns, drawdown_series,
     market_regime_score, max_drawdown, rolling_volatility,
     sharpe_ratio, value_at_risk,
 )
 from data.database import get_alert_history, get_positions
 from data.market_data import (
-    convert_to_eur, fetch_benchmark_history, fetch_benchmark_indices,
+    convert_to_eur, fetch_benchmark_indices,
     fetch_current_prices, fetch_fx_daily_changes, fetch_fx_rates,
-    fetch_morningstar_ratings, fetch_multi_history, fetch_price_history,
+    fetch_multi_history, fetch_price_history,
     fetch_sector_performance, fetch_theme_performance, fetch_vix,
     fetch_yield_curve, fetch_yield_curve_historical,
 )
@@ -295,16 +295,6 @@ def render():
     st.subheader("How Your Portfolio Has Performed")
 
     if port_returns is not None and len(port_returns) > 10:
-        # Benchmark for comparison
-        bench = fetch_benchmark_history(period="1y")
-        bench_returns = None
-        port_beta = None
-        if not bench.empty:
-            bench_returns = daily_returns(bench["Close"])
-            bench_returns = bench_returns.reindex(port_returns.index).dropna()
-            if len(bench_returns) > 10:
-                port_beta = beta(port_returns, bench_returns)
-
         # Key metrics
         c1, c2, c3, c4 = st.columns(4)
         with c1:
@@ -323,11 +313,6 @@ def render():
             var95 = value_at_risk(port_returns) * 100
             st.metric("Worst Day (95%)", f"{var95:.2f}%",
                      help="On 95% of days, your losses won't exceed this amount.")
-
-        # Cumulative returns
-        fig = cumulative_returns_chart(port_returns, bench_returns,
-                                        title="Growth of Your Portfolio vs Benchmark")
-        st.plotly_chart(fig, use_container_width=True)
 
         # Heatmap + Distribution
         col_p1, col_p2 = st.columns(2)
@@ -389,44 +374,26 @@ def render():
         hide_index=True,
     )
 
-    # ─── MORNINGSTAR ─────────────────────────────────────────────────
-    st.divider()
-    st.subheader("Fund Quality Ratings")
-    st.caption("Morningstar is like a restaurant guide for funds — more stars = better rated.")
-
-    mstar = fetch_morningstar_ratings()
-    if mstar:
-        mstar_rows = []
-        for f in mstar:
-            stars = f.get("star_rating")
-            star_display = ("+" * stars) if stars else "N/A"
-            prev = f.get("previous_star_rating")
-            change = ""
-            if stars and prev and prev != stars:
-                diff = stars - prev
-                change = f"{'went up' if diff > 0 else 'went down'} {abs(diff)}"
-
-            risk = f.get("risk_rating") or "N/A"
-            risk_plain = {
-                "Below Average": "Low risk", "Average": "Normal risk",
-                "Above Average": "Higher risk", "High": "High risk",
-                "Low": "Very low risk",
-            }.get(risk, risk)
-
-            mstar_rows.append({
-                "Fund": f.get("fund_name", f.get("isin", ""))[:40],
-                "Stars": star_display,
-                "Change": change,
-                "Type": (f.get("category") or "")[:30],
-                "Analyst Pick": f.get("medalist_rating") or "N/A",
-                "Risk Level": risk_plain,
-            })
-
-        if mstar_rows:
-            mstar_df = pd.DataFrame(mstar_rows)
-            st.dataframe(mstar_df, use_container_width=True, hide_index=True)
-    else:
-        st.info("Fund ratings unavailable. Make sure mstarpy is installed.")
+    # ─── AI ADVISOR SUMMARY ─────────────────────────────────────────
+    st.markdown("---")
+    st.subheader("AI Advisor")
+    try:
+        from data.advisor_engine import generate_daily_analysis
+        result = generate_daily_analysis()
+        if result.get("text"):
+            text = result["text"]
+            preview = text[:500] + ("..." if len(text) > 500 else "")
+            if result.get("cached"):
+                created = result.get("created_at", "")
+                date_str = created[:16].replace("T", " ") if created else "earlier"
+                st.caption(f"Cached analysis from {date_str}")
+            st.markdown(preview)
+            st.page_link("pages/7_advisor.py", label="Open full AI Advisor", icon="🤖")
+        else:
+            st.caption("AI analysis unavailable. Configure an LLM API key to enable.")
+    except Exception:
+        st.caption("AI Advisor not available. Set up an API key (GOOGLE_API_KEY, "
+                   "ANTHROPIC_API_KEY, or OPENAI_API_KEY) to enable.")
 
 
 render()

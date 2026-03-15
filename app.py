@@ -1,5 +1,8 @@
 """InvestmentMonitor — Streamlit entrypoint."""
 
+from dotenv import load_dotenv
+load_dotenv(override=True)
+
 import streamlit as st
 
 from data.database import init_db
@@ -19,6 +22,7 @@ st.set_page_config(
 pages = {
     "Dashboard": [
         st.Page("pages/1_dashboard.py", title="Dashboard", icon="📊", default=True),
+        st.Page("pages/7_advisor.py", title="AI Advisor", icon="🤖"),
     ],
     "Settings": [
         st.Page("pages/5_alerts.py", title="Alert Rules", icon="🔔"),

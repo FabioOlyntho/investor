@@ -177,11 +177,11 @@ def test_seed_default_alerts(db_path):
 
     seed_default_alerts(db_path)
     configs = get_alert_configs(db_path)
-    assert len(configs) == 34
+    assert len(configs) == 32
 
     # Idempotent — calling again should not add more
     seed_default_alerts(db_path)
-    assert len(get_alert_configs(db_path)) == 34
+    assert len(get_alert_configs(db_path)) == 32
 
 
 def test_seed_has_all_alert_types(db_path):

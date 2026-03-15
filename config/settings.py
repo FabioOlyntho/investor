@@ -37,7 +37,6 @@ SECTOR_COLORS = {
 }
 
 # Market data
-DEFAULT_BENCHMARK = "IWDA.AS"  # iShares MSCI World
 RISK_FREE_TICKER = "^IRX"  # 13-week Treasury
 VIX_TICKER = "^VIX"
 
@@ -89,12 +88,12 @@ THEME_ETFS = {
 # Portfolio theme groupings (ticker → theme)
 THEME_TICKER_GROUPS = {
     "Korea": ["IKRA.AS", "HKOR.L", "0P0000ZXLI.F"],
-    "Commodities/Mining": ["0P0001843K.F", "0P00000B0T", "REMX.L", "GGMUSY.SW"],
-    "Nuclear/Uranium": ["NUCL.L", "U3O8.DE"],
+    "Commodities/Mining": ["0P0001843K.F", "LU0172157280", "REMX.L", "GGMUSY.SW"],
+    "Nuclear/Uranium": ["U3O8.DE"],
     "Semiconductors": ["SMH.DE"],
     "Global Equity": ["ES0113693032", "LU0496367763"],
     "Europe": ["ES0138792033", "0P0000Z2NB.F"],
-    "Emerging Asia": ["0P0001CDI0.F"],
+    "Emerging Asia": ["LU0329678410"],
 }
 
 # Ticker → real ISIN for mstarpy fund lookups
@@ -102,11 +101,22 @@ FUND_ISIN_MAP = {
     "ES0113693032": "ES0113693032",
     "LU0496367763": "LU0496367763",
     "0P0001843K.F": "LU1223083087",
-    "0P00000B0T": "LU0172157280",
-    "0P0001CDI0.F": "LU0329678410",
-    "0P0000ZXLI.F": "LU0301637293",
+    "LU0172157280": "LU0172157280",
+    "LU0329678410": "LU0329678410",
+    "0P0000ZXLI.F": "LU0301657293",
     "0P0000Z2NB.F": "LU0524465548",
     "ES0138792033": "ES0138792033",
+}
+
+# Price scale factors for tickers that resolve to wrong share class
+# 0P0000ZXLI.F = JPM Korea Equity C class (~245 EUR), A class is ~24.83 EUR
+PRICE_SCALE_FACTORS = {
+    "0P0000ZXLI.F": 0.10134,
+}
+
+# Currency overrides for tickers where yfinance returns None
+CURRENCY_OVERRIDES = {
+    "SMH.DE": "EUR",
 }
 
 # FX pairs for currency risk monitoring
@@ -143,3 +153,13 @@ ALERT_EMAIL = os.getenv("ALERT_EMAIL", "fabio.olyntho@recodme.es")
 
 # Trading days per year (for annualization)
 TRADING_DAYS = 252
+
+# AI Advisor
+ADVISOR_LLM_PROVIDER = os.getenv("ADVISOR_LLM_PROVIDER", "google")
+ADVISOR_LLM_MODEL = os.getenv("ADVISOR_LLM_MODEL", "")  # empty = use provider default
+ADVISOR_QA_PROVIDER = os.getenv("ADVISOR_QA_PROVIDER", "")  # empty = same as main
+ADVISOR_QA_MODEL = os.getenv("ADVISOR_QA_MODEL", "")  # empty = same as main
+ADVISOR_CACHE_DAILY_TTL = 43200    # 12 hours
+ADVISOR_CACHE_REBALANCE_TTL = 86400  # 24 hours
+ADVISOR_CACHE_OPPORTUNITY_TTL = 86400  # 24 hours
+ADVISOR_DAILY_QUERY_LIMIT = 10

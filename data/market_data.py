@@ -8,9 +8,10 @@ import streamlit as st
 import yfinance as yf
 
 from config.settings import (
-    BENCHMARK_INDICES, DEFAULT_BENCHMARK, FX_PAIRS, FUND_ISIN_MAP,
-    MORNINGSTAR_CACHE_TTL, PRICE_CACHE_TTL, SECTOR_CACHE_TTL,
-    SECTOR_ETFS, THEME_ETFS, VIX_TICKER, YIELD_CACHE_TTL, YIELD_TICKERS,
+    BENCHMARK_INDICES, CURRENCY_OVERRIDES, FX_PAIRS,
+    FUND_ISIN_MAP, MORNINGSTAR_CACHE_TTL, PRICE_CACHE_TTL,
+    PRICE_SCALE_FACTORS, SECTOR_CACHE_TTL, SECTOR_ETFS, THEME_ETFS,
+    VIX_TICKER, YIELD_CACHE_TTL, YIELD_TICKERS,
 )
 from data.database import save_price_history
 
@@ -35,14 +36,23 @@ def fetch_current_prices(tickers: tuple[str, ...]) -> dict[str, dict]:
 
             current = hist["Close"].iloc[-1]
             prev = hist["Close"].iloc[-2] if len(hist) >= 2 else current
+
+            # Apply price scale factor (e.g. wrong share class on yfinance)
+            scale = PRICE_SCALE_FACTORS.get(ticker_str, 1.0)
+            current *= scale
+            prev *= scale
+
             change = current - prev
             change_pct = (change / prev * 100) if prev != 0 else 0.0
+
+            currency = getattr(info, "currency", None)
+            currency = CURRENCY_OVERRIDES.get(ticker_str, currency) or "EUR"
 
             result[ticker_str] = {
                 "price": current,
                 "change": change,
                 "change_pct": change_pct,
-                "currency": getattr(info, "currency", "EUR"),
+                "currency": currency,
             }
         except Exception:
             continue
@@ -97,12 +107,6 @@ def fetch_multi_history(
         return closes.dropna(how="all")
     except Exception:
         return pd.DataFrame()
-
-
-@st.cache_data(ttl=PRICE_CACHE_TTL)
-def fetch_benchmark_history(period: str = "1y") -> pd.DataFrame:
-    """Fetch benchmark (MSCI World) price history."""
-    return fetch_price_history(DEFAULT_BENCHMARK, period=period)
 
 
 @st.cache_data(ttl=SECTOR_CACHE_TTL, show_spinner="Loading VIX data...")
@@ -315,69 +319,99 @@ def fetch_morningstar_ratings() -> list[dict]:
     return _fetch_morningstar_ratings_impl()
 
 
+def _morningstar_fallback_from_cache() -> list[dict]:
+    """Return cached Morningstar data when the API is unavailable."""
+    from data.database import get_morningstar_cache
+    cache = get_morningstar_cache()
+    if cache.empty:
+        return []
+    results = []
+    for _, row in cache.iterrows():
+        results.append({
+            "ticker": row.get("isin", ""),
+            "isin": row["isin"],
+            "fund_name": row.get("fund_name", row["isin"]),
+            "star_rating": row.get("star_rating"),
+            "previous_star_rating": row.get("previous_star_rating"),
+            "medalist_rating": row.get("medalist_rating"),
+            "category": row.get("category"),
+            "risk_rating": row.get("risk_rating"),
+            "_cached": True,
+        })
+    return results
+
+
 def _fetch_morningstar_ratings_impl() -> list[dict]:
     """Implementation shared between cached and no-cache variants."""
     results = []
     try:
         from mstarpy import Funds
     except ImportError:
-        return results
+        return _morningstar_fallback_from_cache()
 
-    for ticker, isin in FUND_ISIN_MAP.items():
-        try:
-            fund = Funds(term=isin)
-            name = fund.name
-
-            star_rating = None
-            previous_star_rating = None
-            medalist_rating = None
-            risk_rating = None
-            category = None
-
-            # dataPoint() takes one field at a time, returns {field: {value, properties}}
+    try:
+        for ticker, isin in FUND_ISIN_MAP.items():
             try:
-                dp = fund.dataPoint("fundStarRating")
-                info = dp.get("fundStarRating", {})
-                star_rating = int(info["value"]) if info.get("value") else None
-                prev = info.get("properties", {}).get("previous", {})
-                if isinstance(prev, dict) and prev.get("value") is not None:
-                    previous_star_rating = int(prev["value"])
-            except Exception:
-                pass
+                fund = Funds(term=isin)
+                name = fund.name
 
-            try:
-                dp = fund.dataPoint("medalistRating")
-                info = dp.get("medalistRating", {})
-                medalist_rating = str(info["value"]) if info.get("value") else None
-            except Exception:
-                pass
+                star_rating = None
+                previous_star_rating = None
+                medalist_rating = None
+                risk_rating = None
+                category = None
 
-            try:
-                dp = fund.dataPoint("morningstarRiskRating")
-                info = dp.get("morningstarRiskRating", {})
-                risk_rating = str(info["value"]) if info.get("value") else None
-            except Exception:
-                pass
+                # dataPoint() takes one field at a time, returns {field: {value, properties}}
+                try:
+                    dp = fund.dataPoint("fundStarRating")
+                    info = dp.get("fundStarRating", {})
+                    star_rating = int(info["value"]) if info.get("value") else None
+                    prev = info.get("properties", {}).get("previous", {})
+                    if isinstance(prev, dict) and prev.get("value") is not None:
+                        previous_star_rating = int(prev["value"])
+                except Exception:
+                    pass
 
-            try:
-                dp = fund.dataPoint("morningstarCategory")
-                info = dp.get("morningstarCategory", {})
-                category = str(info["value"]) if info.get("value") else None
-            except Exception:
-                pass
+                try:
+                    dp = fund.dataPoint("medalistRating")
+                    info = dp.get("medalistRating", {})
+                    medalist_rating = str(info["value"]) if info.get("value") else None
+                except Exception:
+                    pass
 
-            results.append({
-                "ticker": ticker,
-                "isin": isin,
-                "fund_name": name if name else isin,
-                "star_rating": star_rating,
-                "previous_star_rating": previous_star_rating,
-                "medalist_rating": medalist_rating,
-                "category": category,
-                "risk_rating": risk_rating,
-            })
-        except Exception:
-            continue
+                try:
+                    dp = fund.dataPoint("morningstarRiskRating")
+                    info = dp.get("morningstarRiskRating", {})
+                    risk_rating = str(info["value"]) if info.get("value") else None
+                except Exception:
+                    pass
+
+                try:
+                    dp = fund.dataPoint("morningstarCategory")
+                    info = dp.get("morningstarCategory", {})
+                    category = str(info["value"]) if info.get("value") else None
+                except Exception:
+                    pass
+
+                results.append({
+                    "ticker": ticker,
+                    "isin": isin,
+                    "fund_name": name if name else isin,
+                    "star_rating": star_rating,
+                    "previous_star_rating": previous_star_rating,
+                    "medalist_rating": medalist_rating,
+                    "category": category,
+                    "risk_rating": risk_rating,
+                })
+            except ConnectionError:
+                # Morningstar API down — stop trying, fall back to cache
+                return results if results else _morningstar_fallback_from_cache()
+            except Exception:
+                continue
+    except Exception:
+        if results:
+            return results
+        return _morningstar_fallback_from_cache()
 
     return results
 

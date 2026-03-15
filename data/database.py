@@ -115,6 +115,27 @@ def init_db(db_path: Optional[Path] = None):
                 last_updated TEXT NOT NULL DEFAULT (datetime('now'))
             );
 
+            CREATE TABLE IF NOT EXISTS advisor_responses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                response_type TEXT NOT NULL,
+                prompt_hash TEXT NOT NULL,
+                response_text TEXT NOT NULL,
+                model_used TEXT,
+                provider TEXT,
+                input_tokens INTEGER DEFAULT 0,
+                output_tokens INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS opportunity_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scan_type TEXT NOT NULL,
+                ticker_or_theme TEXT,
+                signal_strength REAL,
+                ai_analysis TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
             CREATE INDEX IF NOT EXISTS idx_price_history_ticker_date
                 ON price_history(ticker, date);
             CREATE INDEX IF NOT EXISTS idx_portfolio_values_date
@@ -123,6 +144,10 @@ def init_db(db_path: Optional[Path] = None):
                 ON alert_history(triggered_at);
             CREATE INDEX IF NOT EXISTS idx_regime_history_date
                 ON regime_history(date);
+            CREATE INDEX IF NOT EXISTS idx_advisor_responses_type
+                ON advisor_responses(response_type, created_at);
+            CREATE INDEX IF NOT EXISTS idx_opportunity_history_type
+                ON opportunity_history(scan_type, created_at);
         """)
 
 
@@ -467,7 +492,6 @@ def seed_default_alerts(db_path: Optional[Path] = None):
         ("market_regime_change", None, 15.0, "below", "warning"),
         ("market_regime_change", None, 25.0, "below", "critical"),
         # Price drops — volatile (uranium, rare earth, gold)
-        ("price_drop", "NUCL.L", 5.0, "below", "warning"),
         ("price_drop", "U3O8.DE", 5.0, "below", "warning"),
         ("price_drop", "REMX.L", 5.0, "below", "warning"),
         ("price_drop", "GGMUSY.SW", 5.0, "below", "warning"),
@@ -477,7 +501,6 @@ def seed_default_alerts(db_path: Optional[Path] = None):
         ("price_drop", "HKOR.L", 4.0, "below", "warning"),
         ("price_drop", "0P0001843K.F", 4.0, "below", "warning"),
         # Drawdowns — volatile
-        ("drawdown", "NUCL.L", 20.0, "below", "warning"),
         ("drawdown", "U3O8.DE", 20.0, "below", "warning"),
         ("drawdown", "REMX.L", 20.0, "below", "warning"),
         # Drawdowns — semi/korea
@@ -506,4 +529,93 @@ def seed_default_alerts(db_path: Optional[Path] = None):
             alert_type=alert_type, threshold=threshold,
             direction=direction, severity=severity,
             ticker=ticker, db_path=db_path,
+        )
+
+
+# --- Advisor Responses ---
+
+def save_advisor_response(
+    response_type: str, prompt_hash: str, response_text: str,
+    model_used: str = None, provider: str = None,
+    input_tokens: int = 0, output_tokens: int = 0,
+    db_path: Optional[Path] = None,
+) -> int:
+    with get_connection(db_path) as conn:
+        cursor = conn.execute(
+            """INSERT INTO advisor_responses
+               (response_type, prompt_hash, response_text, model_used,
+                provider, input_tokens, output_tokens)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (response_type, prompt_hash, response_text, model_used,
+             provider, input_tokens, output_tokens),
+        )
+        return cursor.lastrowid
+
+
+def get_cached_advisor_response(
+    response_type: str, prompt_hash: str, max_age_seconds: int,
+    db_path: Optional[Path] = None,
+) -> Optional[str]:
+    """Return cached response if it exists and is within TTL."""
+    with get_connection(db_path) as conn:
+        row = conn.execute(
+            """SELECT response_text FROM advisor_responses
+               WHERE response_type = ? AND prompt_hash = ?
+               AND created_at >= datetime('now', ?)
+               ORDER BY created_at DESC LIMIT 1""",
+            (response_type, prompt_hash, f"-{max_age_seconds} seconds"),
+        ).fetchone()
+    return row["response_text"] if row else None
+
+
+def get_latest_advisor_response(
+    response_type: str,
+    db_path: Optional[Path] = None,
+) -> Optional[dict]:
+    """Return the most recent response of a given type, regardless of age.
+
+    Returns dict with keys: text, created_at, model, provider.
+    """
+    with get_connection(db_path) as conn:
+        row = conn.execute(
+            """SELECT response_text, created_at, model_used, provider
+               FROM advisor_responses
+               WHERE response_type = ?
+               ORDER BY created_at DESC LIMIT 1""",
+            (response_type,),
+        ).fetchone()
+    if row:
+        return {
+            "text": row["response_text"],
+            "created_at": row["created_at"],
+            "model": row["model_used"],
+            "provider": row["provider"],
+        }
+    return None
+
+
+# --- Opportunity History ---
+
+def save_opportunity(
+    scan_type: str, ticker_or_theme: str = None,
+    signal_strength: float = None, ai_analysis: str = None,
+    db_path: Optional[Path] = None,
+) -> int:
+    with get_connection(db_path) as conn:
+        cursor = conn.execute(
+            """INSERT INTO opportunity_history
+               (scan_type, ticker_or_theme, signal_strength, ai_analysis)
+               VALUES (?, ?, ?, ?)""",
+            (scan_type, ticker_or_theme, signal_strength, ai_analysis),
+        )
+        return cursor.lastrowid
+
+
+def get_recent_opportunities(
+    limit: int = 20, db_path: Optional[Path] = None,
+) -> pd.DataFrame:
+    with get_connection(db_path) as conn:
+        return pd.read_sql_query(
+            "SELECT * FROM opportunity_history ORDER BY created_at DESC LIMIT ?",
+            conn, params=[limit],
         )
